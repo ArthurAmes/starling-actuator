@@ -88,7 +88,7 @@ void print_results() {
 
 void setup() {
   Serial.begin(9600);
-  EEPROM.begin(1024);
+  EEPROM.begin(1024); // Remember to go back into lib code and fix for actual board.
   for(Sensor sensor : sensors) {
     pinMode(sensor.ledPin, OUTPUT);
     pinMode(sensor.resistorPin, INPUT);
