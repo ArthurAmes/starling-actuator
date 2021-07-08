@@ -26,7 +26,7 @@ void recalibrate() {
   char buf[255];
   int sample_amount = 0;
 
-  const int max_samples = (int)(((EEPROM.length() - (EEPROM.length()%sizeof(Result)))/sizeof(Result)/sensors_count));
+  const int max_samples = (int)(((EEPROM.length() - (EEPROM.length()%sizeof(Result)))/sizeof(Result)/sensors_count))-1;
 
   do {
     sprintf(buf, "Sample amount (max %d): ", max_samples);
@@ -65,6 +65,9 @@ void recalibrate() {
       eeprom_idx += sizeof(Result);
     }
   }
+  Result paddingRes{0xDEADBEEF, 0, 0};
+  EEPROM.put(eeprom_idx, paddingRes);
+  EEPROM.commit();
 }
 
 void print_results() {
@@ -74,7 +77,7 @@ void print_results() {
     Result res;
     EEPROM.get(i, res);
 
-    if(res.pin == -1) {
+    if(res.pin == 0xDEADBEEF) {
       break;
     }
 
