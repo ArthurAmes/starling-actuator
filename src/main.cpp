@@ -1,20 +1,17 @@
 #include <Arduino.h>
 #include "EEPROM.h"
 
-struct Sensor {
-  uint32_t ledPin;
-  uint32_t resistorPin;
-};
-
 struct Result {
-  uint32_t pin;
   float volume;
   float voltage;
   int result;
 };
 
-const int sensors_count = 2;
-Sensor sensors[sensors_count] = {{17, 14}, {16, 15}};
+const int sample_count = 5;
+
+const int resistor_pin = 13;
+
+char buf[255];
 
 void read_bytes_until_blocking(char delimeter, char* buf, int max) {
   while(Serial.available() <= 0) {}
@@ -22,12 +19,43 @@ void read_bytes_until_blocking(char delimeter, char* buf, int max) {
   Serial.readBytesUntil('\n', buf, 255);
 }
 
+Result interpolate_measurement(int measurement) {
+  int closest_above_delta = 100000;
+  int closest_below_delta = 100000;
+  Result closest_above_result;
+  Result closest_below_result;
+
+  for(int i = 0; i < EEPROM.length(); i += sizeof(Result)) {
+    Result res;
+    EEPROM.get(i, res);
+
+    if(res.result == 0xDEAD) {
+      break;
+    }
+
+    if((res.result > measurement) && (res.result - measurement) < closest_above_delta) {
+      closest_above_delta = (res.result - measurement);
+      closest_above_result = res;
+    }
+
+    if((res.result < measurement) && (measurement - res.result) < closest_below_delta) {
+      closest_below_delta = (measurement - res.result);
+      closest_below_result = res;
+    }
+  }
+
+  Result ret;
+  ret.result = measurement;
+  ret.voltage = (((measurement - closest_below_result.result) / (closest_above_result.result - closest_below_result.result)) * (closest_above_result.voltage - closest_below_result.voltage)) + closest_below_result.voltage;
+  ret.volume = (((measurement - closest_below_result.result) / (closest_above_result.result - closest_below_result.result)) * (closest_above_result.volume - closest_below_result.volume)) + closest_below_result.volume;
+  return ret;
+}
+
 void recalibrate() {
   int eeprom_idx = 0;
-  char buf[255];
   int sample_amount = 0;
 
-  const int max_samples = (int)(((EEPROM.length() - (EEPROM.length()%sizeof(Result)))/sizeof(Result)/sensors_count))-1;
+  const int max_samples = (int)((EEPROM.length() - (EEPROM.length()%sizeof(Result)))/sizeof(Result))-1;
 
   do {
     sprintf(buf, "Sample amount (max %d): ", max_samples);
@@ -53,41 +81,38 @@ void recalibrate() {
     float vtge = atof(buf);
     Serial.println(vtge);
 
-    for(int j = 0; j < sensors_count; ++j) {
-      digitalWrite(sensors[i].ledPin, HIGH);
+    int result = 0;
+    for(int j = 0; j < sample_count; j++) {
+      result += analogRead(resistor_pin);
       delay(10);
-
-      int result = analogRead(sensors[j].resistorPin);
-      digitalWrite(sensors[j].ledPin, LOW);
-      delay(10);
-
-      Result res{sensors[j].resistorPin, vol, vtge, result};
-      EEPROM.put(eeprom_idx, res);
-      EEPROM.commit();
-
-      sprintf(buf, "Volume: %.2f | Sensor: %d | Result: %d | Voltage: %.2f\n", res.volume, res.pin, res.result, res.voltage);
-      Serial.print(buf);
-
-      eeprom_idx += sizeof(Result);
     }
+    result = result / sample_count;
+
+    Result res{vol, vtge, result};
+    EEPROM.put(eeprom_idx, res);
+    EEPROM.commit();
+
+    sprintf(buf, "Volume: %.2f | Result: %d | Voltage: %.2f\n", res.volume, res.result, res.voltage);
+    Serial.print(buf);
+
+    eeprom_idx += sizeof(Result);
   }
-  Result paddingRes{0xDEADBEEF, 0, 0};
+
+  Result paddingRes{0, 0, 0xDEAD};
   EEPROM.put(eeprom_idx, paddingRes);
   EEPROM.commit();
 }
 
 void print_results() {
-  char buf[255];
-
   for(int i = 0; i < EEPROM.length(); i += sizeof(Result)) {
     Result res;
     EEPROM.get(i, res);
 
-    if(res.pin == 0xDEADBEEF) {
+    if(res.result == 0xDEAD) {
       break;
     }
 
-    sprintf(buf, "Volume: %.2f | Sensor: %d | Result: %d | Voltage: %.2f\n", res.volume, res.pin, res.result, res.voltage);
+    sprintf(buf, "Volume: %.2f | Result: %d | Voltage: %.2f\n", res.volume, res.result, res.voltage);
     Serial.print(buf);
   }
 }
@@ -95,10 +120,7 @@ void print_results() {
 void setup() {
   Serial.begin(9600);
   EEPROM.begin(1024); // Remember to go back into lib code and fix for actual board.
-  for(Sensor sensor : sensors) {
-    pinMode(sensor.ledPin, OUTPUT);
-    pinMode(sensor.resistorPin, INPUT);
-  }
+  pinMode(resistor_pin, INPUT);
 
   Serial.println("Recalibrate? Y/n");
   while(true) {
@@ -113,11 +135,17 @@ void setup() {
     }
   }
 
-  Serial.println("Printing Results: \n");
-
-  print_results();
 }
 
 void loop() {
+  int result = 0;
+  for(int j = 0; j < sample_count; j++) {
+    result += analogRead(resistor_pin);
+    delay(10);
+  }
+  result = result / sample_count;
 
+  Result estimate = interpolate_measurement(result);
+  sprintf(buf, "Closest Volume Estimate: %.2f\n", estimate.volume);
+  Serial.print(buf);
 }
