@@ -8,7 +8,8 @@ struct Sensor {
 
 struct Result {
   uint32_t pin;
-  int volume;
+  float volume;
+  float voltage;
   int result;
 };
 
@@ -44,22 +45,27 @@ void recalibrate() {
   for(int i = 0; i < sample_amount; ++i) {
     Serial.print("Volume (ml): ");
     read_bytes_until_blocking('\n', buf, 255);
-    int vol = atoi(buf);
+    float vol = atof(buf);
     Serial.println(vol);
 
-    for(int i = 0; i < sensors_count; ++i) {
+    Serial.print("Base Voltage: ");
+    read_bytes_until_blocking('\n', buf, 255);
+    float vtge = atof(buf);
+    Serial.println(vtge);
+
+    for(int j = 0; j < sensors_count; ++j) {
       digitalWrite(sensors[i].ledPin, HIGH);
       delay(10);
 
-      int result = analogRead(sensors[i].resistorPin);
-      digitalWrite(sensors[i].ledPin, LOW);
+      int result = analogRead(sensors[j].resistorPin);
+      digitalWrite(sensors[j].ledPin, LOW);
       delay(10);
 
-      Result res{sensors[i].resistorPin, vol, result};
+      Result res{sensors[j].resistorPin, vol, vtge, result};
       EEPROM.put(eeprom_idx, res);
       EEPROM.commit();
 
-      sprintf(buf, "Volume: %d | Sensor: %d | Result: %d\n", res.volume, res.pin, res.result);
+      sprintf(buf, "Volume: %.2f | Sensor: %d | Result: %d | Voltage: %.2f\n", res.volume, res.pin, res.result, res.voltage);
       Serial.print(buf);
 
       eeprom_idx += sizeof(Result);
@@ -81,7 +87,7 @@ void print_results() {
       break;
     }
 
-    sprintf(buf, "Volume: %d | Sensor: %d | Result: %d\n", res.volume, res.pin, res.result);
+    sprintf(buf, "Volume: %.2f | Sensor: %d | Result: %d | Voltage: %.2f\n", res.volume, res.pin, res.result, res.voltage);
     Serial.print(buf);
   }
 }
