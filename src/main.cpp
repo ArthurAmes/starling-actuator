@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "EEPROM.h"
+#include "server.h"
 
 struct Result {
   float volume;
@@ -9,7 +10,9 @@ struct Result {
 
 const int sample_count = 5;
 
-const int resistor_pin = 13;
+const int resistor_pin = 35;
+
+const float e = 2.71828;
 
 char buf[255];
 
@@ -33,21 +36,31 @@ Result interpolate_measurement(int measurement) {
       break;
     }
 
-    if((res.result > measurement) && (res.result - measurement) < closest_above_delta) {
-      closest_above_delta = (res.result - measurement);
-      closest_above_result = res;
+    if(res.result < measurement && (measurement - res.result) < closest_below_delta) {
+      closest_below_delta = measurement - res.result;
+      closest_below_result = res;
     }
 
-    if((res.result < measurement) && (measurement - res.result) < closest_below_delta) {
-      closest_below_delta = (measurement - res.result);
-      closest_below_result = res;
+    if(res.result > measurement && (res.result - measurement) < closest_below_delta) {
+      closest_above_delta = res.result - measurement;
+      closest_above_result = res;
     }
   }
 
+  if(closest_below_delta == 100000) {
+    return closest_above_result;
+  }
+  if(closest_above_delta == 100000) {
+    return closest_below_result;
+  }
+  
   Result ret;
   ret.result = measurement;
-  ret.voltage = (((measurement - closest_below_result.result) / (closest_above_result.result - closest_below_result.result)) * (closest_above_result.voltage - closest_below_result.voltage)) + closest_below_result.voltage;
-  ret.volume = (((measurement - closest_below_result.result) / (closest_above_result.result - closest_below_result.result)) * (closest_above_result.volume - closest_below_result.volume)) + closest_below_result.volume;
+
+  float percentage = float(measurement - closest_below_result.result) / float(closest_above_result.result - closest_below_result.result);
+
+  ret.volume = (percentage * (closest_above_result.volume - closest_below_result.volume)) + closest_below_result.volume;
+  ret.voltage = (percentage * (closest_above_result.voltage - closest_below_result.voltage)) + closest_below_result.voltage;
   return ret;
 }
 
@@ -58,8 +71,7 @@ void recalibrate() {
   const int max_samples = (int)((EEPROM.length() - (EEPROM.length()%sizeof(Result)))/sizeof(Result))-1;
 
   do {
-    sprintf(buf, "Sample amount (max %d): ", max_samples);
-    Serial.print(buf);
+    Serial.printf("Sample amount (max %d): ", max_samples);
 
     read_bytes_until_blocking('\n', buf, 255);
     sample_amount = atoi(buf);
@@ -92,8 +104,7 @@ void recalibrate() {
     EEPROM.put(eeprom_idx, res);
     EEPROM.commit();
 
-    sprintf(buf, "Volume: %.2f | Result: %d | Voltage: %.2f\n", res.volume, res.result, res.voltage);
-    Serial.print(buf);
+    Serial.printf("Volume: %.2f | Result: %d | Voltage: %.2f\n", res.volume, res.result, res.voltage);
 
     eeprom_idx += sizeof(Result);
   }
@@ -112,8 +123,7 @@ void print_results() {
       break;
     }
 
-    sprintf(buf, "Volume: %.2f | Result: %d | Voltage: %.2f\n", res.volume, res.result, res.voltage);
-    Serial.print(buf);
+    Serial.printf("Volume: %.2f | Result: %d | Voltage: %.2f\n", res.volume, res.result, res.voltage);
   }
 }
 
@@ -122,19 +132,20 @@ void setup() {
   EEPROM.begin(1024); // Remember to go back into lib code and fix for actual board.
   pinMode(resistor_pin, INPUT);
 
-  Serial.println("Recalibrate? Y/n");
-  while(true) {
-    if (Serial.available() > 0) {
-      char rx_byte = Serial.read();
-      if(rx_byte == 'Y' || rx_byte == 'y') {
-        recalibrate();
-        break;
-      } else if (rx_byte == 'n' || rx_byte == 'N') {
-        break;
-      }
-    }
-  }
+  // Serial.println("Recalibrate? Y/n");
+  // while(true) {
+  //   if (Serial.available() > 0) {
+  //     char rx_byte = Serial.read();
+  //     if(rx_byte == 'Y' || rx_byte == 'y') {
+  //       recalibrate();
+  //       break;
+  //     } else if (rx_byte == 'n' || rx_byte == 'N') {
+  //       break;
+  //     }
+  //   }
+  // }
 
+  CalibrationServer::start_server();
 }
 
 void loop() {
@@ -146,6 +157,5 @@ void loop() {
   result = result / sample_count;
 
   Result estimate = interpolate_measurement(result);
-  sprintf(buf, "Closest Volume Estimate: %.2f\n", estimate.volume);
-  Serial.print(buf);
+  // Serial.printf("Closest Volume Estimate: %.2f\n", estimate.volume);
 }
