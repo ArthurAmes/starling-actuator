@@ -1,12 +1,7 @@
 #include <Arduino.h>
 #include "EEPROM.h"
 #include "server.h"
-
-struct Result {
-  float volume;
-  float voltage;
-  int result;
-};
+#include "Result.h"
 
 const int sample_count = 5;
 
@@ -59,8 +54,8 @@ Result interpolate_measurement(int measurement) {
 
   float percentage = float(measurement - closest_below_result.result) / float(closest_above_result.result - closest_below_result.result);
 
-  ret.volume = (percentage * (closest_above_result.volume - closest_below_result.volume)) + closest_below_result.volume;
   ret.voltage = (percentage * (closest_above_result.voltage - closest_below_result.voltage)) + closest_below_result.voltage;
+  ret.voltage2 = (percentage * (closest_above_result.voltage2 - closest_below_result.voltage2)) + closest_below_result.voltage2;
   return ret;
 }
 
@@ -88,10 +83,15 @@ void recalibrate() {
     float vol = atof(buf);
     Serial.println(vol);
 
-    Serial.print("Base Voltage: ");
+    Serial.print("Voltage 1: ");
     read_bytes_until_blocking('\n', buf, 255);
     float vtge = atof(buf);
     Serial.println(vtge);
+
+    Serial.print("Voltage 2: ");
+    read_bytes_until_blocking('\n', buf, 255);
+    float vtge2 = atof(buf);
+    Serial.println(vtge2);
 
     int result = 0;
     for(int j = 0; j < sample_count; j++) {
@@ -100,11 +100,9 @@ void recalibrate() {
     }
     result = result / sample_count;
 
-    Result res{vol, vtge, result};
+    Result res{vtge, vtge2, result};
     EEPROM.put(eeprom_idx, res);
     EEPROM.commit();
-
-    Serial.printf("Volume: %.2f | Result: %d | Voltage: %.2f\n", res.volume, res.result, res.voltage);
 
     eeprom_idx += sizeof(Result);
   }
@@ -122,8 +120,6 @@ void print_results() {
     if(res.result == 0xDEAD) {
       break;
     }
-
-    Serial.printf("Volume: %.2f | Result: %d | Voltage: %.2f\n", res.volume, res.result, res.voltage);
   }
 }
 
@@ -132,18 +128,18 @@ void setup() {
   EEPROM.begin(1024); // Remember to go back into lib code and fix for actual board.
   pinMode(resistor_pin, INPUT);
 
-  // Serial.println("Recalibrate? Y/n");
-  // while(true) {
-  //   if (Serial.available() > 0) {
-  //     char rx_byte = Serial.read();
-  //     if(rx_byte == 'Y' || rx_byte == 'y') {
-  //       recalibrate();
-  //       break;
-  //     } else if (rx_byte == 'n' || rx_byte == 'N') {
-  //       break;
-  //     }
-  //   }
-  // }
+  Serial.println("Recalibrate? Y/n");
+  while(true) {
+    if (Serial.available() > 0) {
+      char rx_byte = Serial.read();
+      if(rx_byte == 'Y' || rx_byte == 'y') {
+        recalibrate();
+        break;
+      } else if (rx_byte == 'n' || rx_byte == 'N') {
+        break;
+      }
+    }
+  }
 
   CalibrationServer::start_server();
 }
@@ -157,5 +153,5 @@ void loop() {
   result = result / sample_count;
 
   Result estimate = interpolate_measurement(result);
-  // Serial.printf("Closest Volume Estimate: %.2f\n", estimate.volume);
+  
 }
