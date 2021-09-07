@@ -7,8 +7,6 @@ const int sample_count = 5;
 
 const int resistor_pin = 35;
 
-const float e = 2.71828;
-
 char buf[255];
 
 void read_bytes_until_blocking(char delimeter, char* buf, int max) {
@@ -127,6 +125,9 @@ void setup() {
   Serial.begin(9600);
   EEPROM.begin(1024); // Remember to go back into lib code and fix for actual board.
   pinMode(resistor_pin, INPUT);
+  pinMode(8, OUTPUT);
+  pinMode(9, OUTPUT)
+
 
   // Serial.println("Recalibrate? Y/n");
   // while(true) {
@@ -153,5 +154,7 @@ void loop() {
   result = result / sample_count;
 
   Result estimate = interpolate_measurement(result);
-  
+
+  digitalWrite(8, estimate.voltage);
+  digitalWrite(9, estimate.voltage2);
 }
