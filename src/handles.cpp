@@ -5,6 +5,10 @@
 #include "vector"
 #include "regex.h"
 
+const int sample_count = 5;
+
+const int resistor_pin = 35;
+
 const char* html = "<!DOCTYPE html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,user-scalable=no\"><title>Calibration Server</title><style>table,td,th{border:1px solid #000}.button-on:active{background-color:#2980b9}</style><table style=\"width:100%\">%s<tr><th>ADC Value</th><th>Voltage 1</th><th>Voltage 2</th><th>Submit</th></tr>%s</table>";
 
 const char* build_html() {
@@ -19,7 +23,7 @@ const char* build_html() {
             break;
         }
 
-        sprintf(buf, "<tr><td>%d</td></td><td><input type=\"text\" id=\"voltage\" name=\"voltage\" form=\"row_%d\" value=\"%f\"></td><td><input type=\"text\" id=\"voltage2\" name=\"voltage2\" form=\"row_%d\" value=\"%f\"></td><td><input type=\"hidden\" name=\"form_id\" form=\"row_%d\" value=\"%d&\"><input type=\"submit\" value=\"SET\" form=\"row_%d\"></tr>", res.result, i, res.voltage, i, res.voltage2, i, i, i);
+        sprintf(buf, "<tr><td>%d</td></td><td><input type=\"text\" id=\"voltage\" name=\"voltage\" form=\"row_%d\" value=\"%f\"></td><td><input type=\"text\" id=\"voltage2\" name=\"voltage2\" form=\"row_%d\" value=\"%f\"></td><td><input type=\"hidden\" name=\"form_id\" form=\"row_%d\" value=\"%d&\"><input type=\"submit\" value=\"SET\" form=\"row_%d\"></tr>", res.result, i, res.voltage, i, res.voltage2, i, i/sizeof(Result), i);
         table += buf;
         sprintf(buf, "<form method=\"post\" id=\"row_%d\" action=\"/calibration\"></form>", i);
         forms += buf;
@@ -58,41 +62,48 @@ esp_err_t Handles::calibration_post(httpd_req_t *r) {
     Result res;
     int idx;
 
-    Serial.println(content);
-
     int i = 0;
     int j = i;
-    for(; content[i] != '='; ++i) {
-        for(; content[j] != '&'; ++j) {}
-    }
+    for(; content[i] != '='; ++i) {}
+    for(; content[j] != '&'; ++j) {}
 
-    char* end_ptr = content + j;
-    Serial.println(i);
-    Serial.println(j);
-    res.voltage = strtof(content + i, &end_ptr);
+    char buf[255];
 
+    memcpy(buf, &content[i+1], j-i-1);
+    buf[j-i-1] = '\0';
+    res.voltage = atof(buf);
+
+    i = j;
+    for(; content[i] != '='; ++i) {}
     j = i;
-    for(; content[i] != '='; ++i) {
-        for(; content[j] != '&'; ++j) {}
-    }
-    end_ptr = content + j;
-    Serial.println(i);
-    Serial.println(j);
-    res.voltage2 = strtof(content + i, &end_ptr);
+    for(; content[j] != '&'; ++j) {}
 
+    memcpy(buf, &content[i+1], j-i-1);
+    buf[j-i-1] = '\0';
+    res.voltage2 = atof(buf);
+
+    i = j;
+    for(; content[i] != '='; ++i) {}
     j = i;
-    for(; content[i] != '='; ++i) {
-        for(; content[j] != '&'; ++j) {}
-    }
+    for(; content[j] != '%'; ++j) {}
 
-    end_ptr = content + j;
-    Serial.println(i);
-    Serial.println(j);
-    idx = (int)strtof(content + i, &end_ptr);
+    memcpy(buf, &content[i+1], j-i-1);
+    buf[j-i-1] = '\0';
+    idx = atoi(buf);
 
     Serial.println(res.voltage);
     Serial.println(res.voltage2);
     Serial.println(idx);
+
+    res.result = 0;
+    for(int j = 0; j < sample_count; j++) {
+      res.result += analogRead(resistor_pin);
+      delay(10);
+    }
+    res.result = res.result / sample_count;
+
+    EEPROM.put(idx*sizeof(Result), res);
+    EEPROM.commit();
 
     const char resp[] = "Set calibration.";
     httpd_resp_send(r, resp, HTTPD_RESP_USE_STRLEN);
