@@ -126,7 +126,7 @@ void setup() {
   EEPROM.begin(1024); // Remember to go back into lib code and fix for actual board.
   pinMode(resistor_pin, INPUT);
   pinMode(8, OUTPUT);
-  pinMode(9, OUTPUT)
+  pinMode(9, OUTPUT);
 
 
   // Serial.println("Recalibrate? Y/n");
