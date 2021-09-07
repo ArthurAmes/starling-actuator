@@ -128,18 +128,18 @@ void setup() {
   EEPROM.begin(1024); // Remember to go back into lib code and fix for actual board.
   pinMode(resistor_pin, INPUT);
 
-  Serial.println("Recalibrate? Y/n");
-  while(true) {
-    if (Serial.available() > 0) {
-      char rx_byte = Serial.read();
-      if(rx_byte == 'Y' || rx_byte == 'y') {
-        recalibrate();
-        break;
-      } else if (rx_byte == 'n' || rx_byte == 'N') {
-        break;
-      }
-    }
-  }
+  // Serial.println("Recalibrate? Y/n");
+  // while(true) {
+  //   if (Serial.available() > 0) {
+  //     char rx_byte = Serial.read();
+  //     if(rx_byte == 'Y' || rx_byte == 'y') {
+  //       recalibrate();
+  //       break;
+  //     } else if (rx_byte == 'n' || rx_byte == 'N') {
+  //       break;
+  //     }
+  //   }
+  // }
 
   CalibrationServer::start_server();
 }
